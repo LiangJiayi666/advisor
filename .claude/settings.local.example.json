@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": []
+  },
+  "additionalDirectories": [
+    "/home/user/MediaCrawler"
+  ]
+}

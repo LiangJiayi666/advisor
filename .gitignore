@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+*.pyo
+.claude/settings.local.json
+advisor_data/profiles/prism/*.json
+
+# Prism module — standalone, not required for other functionality
+scripts/prism_calc.py
+scripts/prism_profile.py
+.claude/agents/prism-interpreter.md
+.claude/commands/read-prism.md
+.claude/skills/prism-reading/
+.claude/constraints/prism-boundary.md
+advisor_data/archives/*/prism-*.md
+agent_tasks/*/prism_*.md
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+*.swp
+*.swo
+*~
+.bak
+.idea/
+.vscode/
+
+# Personal data and session artifacts — not for public repo
+agent_tasks/
+advisor_data/

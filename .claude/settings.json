@@ -1,0 +1,74 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit(/.claude/skills/job-research/**)",
+      "Edit(/.claude/skills/prism-reading/**)",
+      "Edit(/.claude/skills/memory-policy/**)",
+      "Edit(/.claude/skills/archive-writer/**)",
+      "Bash(python scripts/*.py*)",
+      "Bash(python scripts/hooks/*.py*)",
+      "Bash(ls *)",
+      "Bash(mkdir *)"
+    ],
+    "additionalDirectories": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/hooks/session_start.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/hooks/user_prompt_submit.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "WebSearch|WebFetch|mcp__web_reader__webReader",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/hooks/pre_tool_use.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "WebSearch|WebFetch|mcp__web_reader__webReader",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/hooks/post_tool_use.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/hooks/stop_hook.py"
+          }
+        ]
+      }
+    ]
+  }
+}
