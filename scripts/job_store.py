@@ -1,8 +1,14 @@
 """Structured job storage for Advisor.
 
 Job records are business data, not advisor derived memory.  This module keeps
-job cards, raw job text, and field evidence under advisor_data/jobs/ so the
-memory JSONL can stay focused on user preferences and decisions.
+job cards, raw job text, and field evidence under advisor_data/jobs/{owner}/ so
+the memory JSONL can stay focused on user preferences and decisions.
+
+Each person (e.g. "self", "partner") gets their own isolated directory tree:
+    advisor_data/jobs/{owner}/jobs.jsonl
+    advisor_data/jobs/{owner}/raw/
+    advisor_data/jobs/{owner}/evidence/
+    advisor_data/jobs/{owner}/comparisons/
 """
 from __future__ import annotations
 
@@ -40,9 +46,10 @@ class JobStore:
     recommended by the architecture review.
     """
 
-    def __init__(self, advisor_data_dir: str | Path) -> None:
+    def __init__(self, advisor_data_dir: str | Path, owner: str = "self") -> None:
         self.advisor_data_dir = Path(advisor_data_dir)
-        self.jobs_dir = self.advisor_data_dir / "jobs"
+        self.owner = owner
+        self.jobs_dir = self.advisor_data_dir / "jobs" / owner
         self.raw_dir = self.jobs_dir / "raw"
         self.evidence_dir = self.jobs_dir / "evidence"
         self.comparisons_dir = self.jobs_dir / "comparisons"
