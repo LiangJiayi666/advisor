@@ -30,3 +30,5 @@ Thumbs.db
 agent_tasks/
 advisor_data/
 cv/
+# Tests — local only
+tests/
