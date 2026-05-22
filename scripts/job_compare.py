@@ -116,17 +116,57 @@ def score_job(job: Dict[str, Any], user_preferences: Dict[str, Any] | None = Non
     }
 
 
+def _apply_company_cap(
+    ranking: List[Dict[str, Any]], max_per_company: int
+) -> List[Dict[str, Any]]:
+    """Soft-penalty: jobs beyond `max_per_company` per company get a score penalty.
+
+    After initial scoring and sorting, the N-th job (N > max_per_company) from the
+    same company has its total_score multiplied by a decay factor that increases
+    with rank.  The list is then re-sorted so penalised jobs sink naturally.
+    """
+    if max_per_company <= 0:
+        return ranking
+    company_counts: Dict[str, int] = {}
+    result: List[Dict[str, Any]] = []
+    for item in ranking:
+        company = str(item.get("company") or "unknown")
+        count = company_counts.get(company, 0)
+        if count >= max_per_company:
+            decay = 0.7 ** (count - max_per_company + 1)
+            penalised = {**item, "total_score": round(item["total_score"] * decay, 4)}
+            penalised.setdefault("penalties", {})["company_overflow"] = (
+                f"{company} 第 {count + 1} 个岗位，分数乘 {decay:.2f}"
+            )
+            result.append(penalised)
+        else:
+            result.append(item)
+        company_counts[company] = count + 1
+    result.sort(key=lambda item: item["total_score"], reverse=True)
+    return result
+
+
 def compare_jobs(
     jobs: Iterable[Dict[str, Any]],
     job_ids: Iterable[str],
     user_preferences: Dict[str, Any] | None = None,
+    max_per_company: int = 3,
 ) -> Dict[str, Any]:
     ids = list(job_ids)
     selected = [job for job in jobs if job.get("job_id") in ids]
     ranking = [score_job(job, user_preferences) for job in selected]
     ranking.sort(key=lambda item: item["total_score"], reverse=True)
+    adjusted = _apply_company_cap(ranking, max_per_company)
+    overflow = [item for item in adjusted if item.get("penalties", {}).get("company_overflow")]
     return {
         "weights": DEFAULT_WEIGHTS,
-        "ranking": ranking,
+        "max_per_company": max_per_company,
+        "ranking": adjusted,
+        "overflow": [
+            {"job_id": item["job_id"], "company": item.get("company"),
+             "original_score": item.get("penalties", {}).get("_original_score"),
+             "adjusted_score": item["total_score"]}
+            for item in overflow
+        ],
         "missing_job_ids": [job_id for job_id in ids if not any(job.get("job_id") == job_id for job in selected)],
     }
