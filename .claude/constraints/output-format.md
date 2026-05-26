@@ -1,13 +1,13 @@
 # Output Format Rules
 
-## Dual-Column Output
+## Standard Advisory Output
 
-When prism analysis is active (user requested or context-triggered), output must separate:
+Output must separate:
 
 ```
 ### 模式分析 / Pattern Perspective
-[prism-based interpretation: elemental and cyclical dynamics. 
- Clearly marked as interpretive framework, not prediction.]
+[Interpretive framework: behavioral patterns, recurring themes, and situational dynamics.
+ Clearly marked as analysis, not prediction.]
 
 ---
 
@@ -16,8 +16,6 @@ When prism analysis is active (user requested or context-triggered), output must
  Grounded in real-world information and user's actual situation.]
 ```
 
-When prism is NOT active, output uses standard advisory format without the split.
-
 ## Session Archive Format
 
 Each session archive (`advisor_data/archives/YYYY-MM-DD/{session_id}.md`):
@@ -25,7 +23,7 @@ Each session archive (`advisor_data/archives/YYYY-MM-DD/{session_id}.md`):
 # Session: [topic]
 
 Date: YYYY-MM-DD
-Tags: [career, prism, stress, research, ...]
+Tags: [career, stress, research, ...]
 Risk Level: GREEN | YELLOW | RED
 
 ## Key Points
@@ -36,9 +34,6 @@ Risk Level: GREEN | YELLOW | RED
 
 ## Follow-up
 - [unresolved items to track]
-
-## Prism Notes (if applicable)
-- [any prism data points or patterns discussed]
 
 ## Memory Updates
 - [list of profile updates made this session]

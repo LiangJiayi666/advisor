@@ -15,5 +15,6 @@ Workflow:
    - Uncertainties / missing evidence
    - A short recommendation in the user's decision language
 4. If evidence is missing or stale, say so explicitly. Do not turn low-confidence fields into firm conclusions.
+5. If the user asks for broad corpus ranking/reporting rather than a small direct comparison, check whether raw-only JDs exist outside `jobs.jsonl`. Warn that those postings will be omitted unless the corpus is synced first (for example via `scripts/job_batch_rank.py --sync-raw`).
 
 Do not compare by free-form memory only. Job postings are business-object data and must come from `advisor_data/jobs/{owner}/`.

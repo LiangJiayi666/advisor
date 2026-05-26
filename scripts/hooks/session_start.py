@@ -7,7 +7,6 @@ BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 STATE_PATH = os.path.join(BASE, "advisor_data", "state", "state.json")
 ARCHIVES_DIR = os.path.join(BASE, "advisor_data", "archives")
 MEMORIES_PATH = os.path.join(BASE, "advisor_data", "memories", "memory.jsonl")
-PRISM_DIR = os.path.join(BASE, "advisor_data", "profiles", "prism")
 
 
 def read_json(path):
@@ -58,25 +57,14 @@ def read_recent_memories(n=20):
     return entries
 
 
-def check_prism_profile():
-    if not os.path.isdir(PRISM_DIR):
-        return None
-    for f in os.listdir(PRISM_DIR):
-        if f.endswith(".json"):
-            return os.path.join(PRISM_DIR, f)
-    return None
-
-
 def main():
     state = read_json(STATE_PATH)
     archives = read_recent_archives()
     memories = read_recent_memories()
-    prism_file = check_prism_profile()
 
     last_date = state.get("last_session_date") or "N/A"
     last_topic = state.get("recent_topics", ["N/A"])[-1] if state.get("recent_topics") else "N/A"
     topics = state.get("recent_topics", [])
-    prism_status = "loaded" if prism_file else "not loaded"
 
     mem_summary = "none"
     if memories:
@@ -97,7 +85,6 @@ def main():
     print(f"Last session: {last_date} - {last_topic}")
     print(f"Recent topics: {topics}")
     print(f"Recent archives: {archive_summary}")
-    print(f"Prism profile: {prism_status}")
     print(f"Recent memories summary: {mem_summary}")
     print("===")
     sys.exit(0)

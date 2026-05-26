@@ -10,9 +10,10 @@ If user input contains any of the following, immediately activate crisis protoco
 
 ## Crisis Protocol
 
-1. **Stop advisory flow** — do not continue with prism reading, career advice, or research.
+1. **Stop advisory flow** — do not continue with career advice or research.
 2. **Output crisis response** in Chinese:
    - Acknowledge the distress directly.
+   - Use calm, non-diagnostic language. When in doubt, err toward caution.
    - Provide mainland China crisis hotlines:
      - 全国心理援助热线：400-161-9995
      - 北京心理危机研究与干预中心：010-82951332
@@ -25,14 +26,14 @@ If user input contains any of the following, immediately activate crisis protoco
 
 Every user message is implicitly assessed for risk level:
 - **GREEN**: Normal advisory conversation. Proceed with all modules.
-- **YELLOW**: Elevated emotional distress visible. Continue advisory but add empathetic acknowledgment. Avoid prism readings that could amplify anxiety (e.g., "冲太岁" framing). Flag session for review.
+- **YELLOW**: Elevated emotional distress visible. Continue advisory but add empathetic acknowledgment. Flag session for review.
 - **RED**: Crisis indicators detected. Activate crisis protocol above.
 
 ## Mandatory Escalation
 
 - Any mention of suicide or self-harm → RED, no exceptions.
 - Expressions of hopelessness combined with high stress (job loss, relationship breakdown) → YELLOW minimum.
-- Bazi module must never be used to rationalize or minimize crisis signals.
+- Advisory modules must never be used to rationalize or minimize crisis signals.
 
 ## Data Safety
 

@@ -13,8 +13,7 @@ Two categories of memory data:
 - Extracted user profile facts (career stage, preferences, recurring themes).
 - Session summaries with key decisions and emotional state.
 - Research bookmarks and citation chains.
-- Prism profile (structured data, noted patterns).
-- **Written to `advisor_data/memories/memory.jsonl`** as JSONL entries, and prism profiles to `advisor_data/profiles/prism/*.json`.
+- **Written to `advisor_data/memories/memory.jsonl`** as JSONL entries.
 
 ### Business Object Data (structured external facts)
 - Structured records about external objects, such as job postings, companies, source pages, and comparison artifacts.
@@ -28,7 +27,6 @@ At the end of each substantive exchange, consider extracting:
 - New factual information about the user (job change, life event, preference).
 - Explicit decisions or commitments made by the user.
 - Recurring emotional patterns or stress themes.
-- Prism data points provided or calculated.
 
 ## Write Standards
 
@@ -48,13 +46,12 @@ Derived memory is stored as JSONL entries in `advisor_data/memories/memory.jsonl
 ## Sensitive Data Classification
 
 - **CRISIS_FLAG**: Only a boolean + date. No narrative. Stored as a JSONL entry with `sensitivity: raw_sensitive` and `kind: fact`.
-- **Prism data**: Considered semi-sensitive. Stored in `advisor_data/profiles/prism/*.json` as structured JSON. Store the structured data and patterns, but not interpretive narratives that could change between sessions.
 - **Personal facts**: Career details, relationships, health disclosures — stored as JSONL entries with `kind: fact` or `kind: trait`, factual assertions only.
 - **Never store**: passwords, account numbers, ID numbers, addresses, or any PII beyond what's needed for advisory context.
 
 ## Memory Loading
 
-- `session_start` hook reads `advisor_data/memories/memory.jsonl` and prism profiles from `advisor_data/profiles/prism/*.json`.
+- `session_start` hook reads `advisor_data/memories/memory.jsonl`.
 - Session archives in `advisor_data/archives/` are loaded on-demand when contextually relevant, not at session start.
 - If memory.jsonl doesn't exist, first session creates it after sufficient interaction.
 

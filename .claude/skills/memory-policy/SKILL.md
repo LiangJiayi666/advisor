@@ -1,39 +1,58 @@
 ---
 name: memory-policy
-description: Extract, classify, and persist stable facts from conversations into structured long-term memory.
-triggers: End of substantive session, or user asks to recall, update, or review memories.
+description: Extract, classify, and persist stable long-term memory from substantive sessions.
+triggers: End of substantive session, or user asks to recall, update, review, or correct stored memories.
 ---
 
 # Memory Policy
 
-## Trigger
-End of a substantive conversation session, or user explicitly asks to recall, update, review, or correct stored memories.
+## Role
 
-## Workflow
+This skill defines what counts as durable memory, how it should be classified, and how it should be written. It does not own full session-close orchestration.
 
-1. **Extract stable facts** — From the current conversation, identify:
-   - Factual assertions about the user (birth date, location, job title, education)
-   - Stated preferences (communication style, topic interests, advice format)
-   - Observed personality traits or behavioral patterns
-   - Explicit decisions or commitments made
-   Do not extract transient emotional states or situational complaints as permanent memories.
+## What qualifies as memory
 
-2. **Classify sensitivity** — Tag each memory as:
-   - `raw_sensitive`: birth datetime, birth location, government ID, financial specifics
-   - `derived`: personality traits, preferences, behavioral patterns, prism-derived insights
-   - `general`: job field, interests, communication preferences
-   Raw sensitive data requires higher confidence and explicit user verification before marking `verified: true`.
+Eligible long-term memory includes:
+- stable facts about the user
+- communication preferences
+- recurring traits or patterns
+- explicit decisions or commitments likely to matter later
 
-3. **Check for conflicts** — Compare against existing entries in `advisor_data/memories/memory.jsonl`:
-   - If a new fact contradicts an existing `verified: true` entry, flag for user resolution. Do not auto-overwrite.
-   - If a new fact duplicates an existing entry with identical content, skip.
-   - If a new fact updates an existing entry (same topic, newer data), create a new entry and mark the old one `superseded: true`.
+Not eligible:
+- raw conversation text
+- transient frustrations or passing mood states
+- ordinary procedural back-and-forth
+- job posting content that belongs in the job store
 
-4. **Write new entries** — Append to `advisor_data/memories/memory.jsonl`, one JSON object per line.
+## Method
 
-5. **Tag prism-related memories** — If any memory relates to prism profile data (birth info, chart corrections), add `prism_related` to the memory entry's `tags` field.
+### 1. Extract only durable information
 
-## Memory Schema
+From the session, identify information that is likely to remain useful across later conversations.
+
+### 2. Classify sensitivity
+
+Use these levels:
+- `raw_sensitive`
+- `derived`
+- `general`
+
+Raw sensitive items need the highest caution and should not be casually merged into broad summaries.
+
+### 3. Check for duplication or conflict
+
+Before writing:
+- skip exact duplicates
+- if new info updates an old memory, create a new entry and mark the old one superseded
+- do not silently overwrite verified truths when there is a conflict
+
+### 4. Write structured JSONL entries
+
+Canonical storage:
+- `advisor_data/memories/memory.jsonl`
+
+Canonical schema:
+
 ```json
 {
   "id": "mem_{timestamp}_{hash}",
@@ -49,13 +68,23 @@ End of a substantive conversation session, or user explicitly asks to recall, up
 }
 ```
 
-- `id`: `mem_{UnixTimestamp}_{first8charsOfSHA256(content)}`
-- `confidence`: 0.0-1.0, based on how directly the user stated this vs inferred
-- `verified`: `true` only after explicit user confirmation
+## Recall mode guidance
 
-## Constraints
-- Never overwrite `verified: true` entries without user confirmation.
-- Always classify sensitivity level. Raw sensitive data gets extra protection.
-- Do not store verbatim conversation text. Only structured, generalized facts.
-- Inferred traits must have `confidence < 0.8` and `verified: false` until confirmed.
-- Memory file is append-only. Corrections are new entries with `superseded: true` on the old one.
+When the task is recall rather than writing:
+- read relevant memories
+- group them by kind / theme
+- summarize them for current context
+- do not inflate uncertain memory into hard fact
+
+## Hard constraints
+
+- Never store raw transcript text as durable memory.
+- Never treat job object data as memory when it belongs under `advisor_data/jobs/`.
+- Never auto-overwrite a verified memory without explicit resolution.
+- Inferred traits should remain lower-confidence until confirmed.
+
+## References
+
+- Session-close orchestration: `/close-session`
+- Archive structure: `archive-writer`
+- Global rules: `CLAUDE.md`

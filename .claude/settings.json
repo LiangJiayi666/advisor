@@ -4,7 +4,6 @@
       "Read",
       "Write",
       "Edit(/.claude/skills/job-research/**)",
-      "Edit(/.claude/skills/prism-reading/**)",
       "Edit(/.claude/skills/memory-policy/**)",
       "Edit(/.claude/skills/archive-writer/**)",
       "Bash(python scripts/*.py*)",

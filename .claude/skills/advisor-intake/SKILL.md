@@ -11,7 +11,7 @@ User expresses any of: stress, anxiety, career confusion, emotional distress, bu
 
 ## Workflow
 
-1. **Safety check** — Assess for self-harm, suicidal ideation, or acute crisis signals. If detected, immediately delegate to safety-triage agent. Do not proceed with intake.
+1. **Safety check** — Assess for self-harm, suicidal ideation, or acute crisis signals. If detected, immediately activate crisis protocol per `safety.md` constraints. Do not proceed with intake.
 
 2. **Emotional calibration** — Ask the user to rate their current emotional intensity on a 1-10 scale. If they decline, infer from language cues and note it as observed (not self-reported).
 
