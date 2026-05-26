@@ -18,11 +18,16 @@ TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+.#_-]+|[一-鿿]{2,}")
 DEADLINE_HINTS = ["截止", "网申截止", "招满即止", "尽快", "ASAP", "rolling", "近期到岗"]
 INTENSE_HINTS = ["996", "高强度", "出差", "加班", "oncall", "值班"]
 PRIMARY_KEYWORDS = [
-    "AI产品经理", "产品经理", "金融科技", "AI应用", "大模型", "AIGC", "Agent", "多智能体",
-    "工作流", "自动化", "RAG", "数据产品", "智能体", "需求分析", "产品设计", "用户研究",
+    "大模型", "AIGC", "Agent", "多智能体", "工作流", "自动化", "RAG",
+    "算法", "机器学习", "深度学习", "NLP", "LLM", "智能体",
+    "金融科技", "AI应用",
 ]
-BACKUP_KEYWORDS = ["量化", "因子", "策略", "中频", "投研", "研究员", "数据科学", "机器学习"]
-ADJACENT_KEYWORDS = ["Python", "R", "SQL", "统计", "建模", "实验", "分析", "可视化", "平台"]
+BACKUP_KEYWORDS = ["量化", "因子", "策略", "中频", "投研", "研究员", "数据科学"]
+ADJACENT_KEYWORDS = [
+    "Python", "R", "SQL", "统计", "建模", "实验", "分析", "可视化", "平台",
+    "产品经理", "AI产品经理", "数据产品", "需求分析", "产品设计", "用户研究",
+]
+AI_ENGINEER_HINTS = ["算法工程师", "AI工程师", "大模型", "NLP", "LLM", "AIGC", "Agent", "多智能体", "机器学习", "深度学习"]
 AI_PRODUCT_HINTS = ["AI产品", "产品经理", "大模型产品", "AIGC产品", "AI应用产品", "Agent产品"]
 QUANT_HINTS = ["量化", "因子", "策略研究", "中频", "投研", "研究员"]
 ADJACENT_TRACK_HINTS = ["数据产品", "分析", "平台产品", "自动化", "风控", "推荐", "增长"]
@@ -50,8 +55,8 @@ def default_preferences() -> UserPreferences:
         primary_keywords=PRIMARY_KEYWORDS,
         backup_keywords=BACKUP_KEYWORDS,
         adjacent_keywords=ADJACENT_KEYWORDS,
-        primary_families=["AI产品经理", "产品", "数据产品", "金融科技产品"],
-        backup_families=["量化研究", "研究", "数据科学"],
+        primary_families=["AI/算法", "金融科技产品", "数据科学"],
+        backup_families=["产品", "数据产品", "量化研究", "研究"],
         explicit_exclusions=["学术岗位", "科研教职路径", "考公", "公务员岗位"],
         inferred_exclusions=["纯生物实验岗位", "纯行政支持岗位", "长反馈周期且高不确定性的纯研究环境"],
     )
@@ -467,12 +472,12 @@ def _infer_source_from_raw(path: Path, company: str) -> str:
 
 def _infer_job_family_from_raw(title: str, text: str) -> str:
     merged = f"{title} {text}"
-    if any(token in merged for token in ["产品经理", "产品策划", "产品运营", "产品实习", "产品"]):
-        return "产品"
-    if any(token in merged for token in ["量化", "分析师", "数据分析", "数据科学", "研究员", "策略研究"]):
-        return "数据"
     if any(token in merged for token in ["算法", "研发", "开发", "工程师", "模型"]):
         return "AI/算法"
+    if any(token in merged for token in ["量化", "分析师", "数据分析", "数据科学", "研究员", "策略研究"]):
+        return "数据"
+    if any(token in merged for token in ["产品经理", "产品策划", "产品运营", "产品实习", "产品"]):
+        return "产品"
     return "其他"
 
 
@@ -635,10 +640,12 @@ def _completeness(job: Dict[str, Any], raw_match: Dict[str, Any] | None) -> floa
 
 
 def _derive_track(text: str) -> str:
-    if any(hint.lower() in text.lower() for hint in AI_PRODUCT_HINTS):
-        return "ai_pm"
+    if any(hint.lower() in text.lower() for hint in AI_ENGINEER_HINTS):
+        return "ai_engineer"
     if any(hint.lower() in text.lower() for hint in QUANT_HINTS):
         return "quant_research"
+    if any(hint.lower() in text.lower() for hint in AI_PRODUCT_HINTS):
+        return "ai_pm"
     if any(hint.lower() in text.lower() for hint in ADJACENT_TRACK_HINTS):
         return "adjacent"
     return "other"
@@ -723,20 +730,22 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
     backup_hits = _contains_any(text, prefs.backup_keywords + prefs.backup_families)
     adjacent_hits = _contains_any(text, prefs.adjacent_keywords)
 
-    if track == "ai_pm":
+    if track == "ai_engineer":
         track_fit = 1.0
     elif track == "quant_research":
-        track_fit = 0.78
+        track_fit = 0.82
+    elif track == "ai_pm":
+        track_fit = 0.65
     elif track == "adjacent":
-        track_fit = 0.7
+        track_fit = 0.6
     else:
         track_fit = 0.25 if primary_hits or backup_hits else 0.08
 
     skill_fit = min(1.0, primary_hits * 0.11 + backup_hits * 0.09 + adjacent_hits * 0.04)
     experience_fit = min(1.0, _experience_fit(text, evidence_terms) * 1.6)
     fintech_hits = _contains_any(text, FINTECH_HINTS)
-    industry_fit = min(1.0, fintech_hits * 0.18 + (0.25 if track == "ai_pm" else 0.0) + (0.35 if track == "quant_research" else 0.0))
-    growth_fit = min(1.0, _contains_any(text, ["产品", "平台", "自动化", "agent", "workflow", "分析", "数据", "需求", "协作"]) * 0.12)
+    industry_fit = min(1.0, fintech_hits * 0.18 + (0.25 if track == "ai_engineer" else 0.0) + (0.35 if track == "quant_research" else 0.0))
+    growth_fit = min(1.0, _contains_any(text, ["平台", "自动化", "agent", "workflow", "分析", "数据", "需求", "协作"]) * 0.12)
 
     cost_risk = 0.72
     if any(hint.lower() in text.lower() for hint in INTENSE_HINTS):
@@ -770,12 +779,14 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
 
     strengths: List[str] = []
     risks: List[str] = []
-    if track == "ai_pm":
-        strengths.append("主轨AI产品方向")
+    if track == "ai_engineer":
+        strengths.append("主轨AI/算法工程方向")
     elif track == "quant_research":
         strengths.append("备选量化研究方向")
+    elif track == "ai_pm":
+        strengths.append("AI产品方向")
     elif track == "adjacent":
-        strengths.append("相邻产品/数据方向")
+        strengths.append("相邻数据/平台方向")
     if fintech_hits:
         strengths.append("金融/投研语境")
     if experience_fit >= 0.6:
