@@ -10,6 +10,8 @@ agent_tasks/
 tests/
 resume_master.tex
 resume_master.md
+resume_master.html
+AdvisorPrivate_*.md
 cv0313.tex
 
 # ===== Prism module — completely hidden =====
