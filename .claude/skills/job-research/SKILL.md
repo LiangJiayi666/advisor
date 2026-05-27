@@ -85,6 +85,9 @@ salary_range:     # 字符串: JD提到的薪资区间，没有则 ""
 coding:           # 单选: 不需要 | 加分项 | 必须且日常写
                   # 对"会写代码"的要求
 
+work_experience_required:  # 单选: 不限/应届可 | 1-2年 | 3年及以上 | 5年及以上
+                           # 全职工作经验要求（实习不算）
+
 matched_experiences:  # 列表: 用户最匹配该岗位的1-3段经历（标题即可）
                       # 从上面用户画像中选取，没有匹配则 []
 ```
@@ -97,7 +100,23 @@ matched_experiences:  # 列表: 用户最匹配该岗位的1-3段经历（标题
 - If the JD is too vague to determine a field, use the most conservative option (e.g. `education_floor: 本科可`, `tech_depth: 能用工具就行`)
 - Do NOT skip fields — every field must have a value
 
-### 4. Output shape
+### 4. Ingest hard gate (screen out clearly unsuitable jobs)
+
+After extracting features, check the following **4 gates** before saving to jobs.jsonl.
+If any gate triggers, do NOT save the job card. Instead, report the rejection reason to the user.
+
+| Gate | Rule | Check using |
+|------|------|-------------|
+| 排除方向 | 公务员/考公/博士后/教师/纯生物/纯行政 等 | keyword scan on JD text |
+| 学历不达标 | education_floor 为"博士优先" | features.education_floor |
+| 经验不匹配 | work_experience_required 为"3年及以上"或"5年及以上" | features.work_experience_required |
+| 专业硬壁垒 | major_required 包含医学/法学/建筑等，且无"不限"或用户相关领域 | features.major_required |
+
+Implementation: `scripts.job_feature_extract.should_reject_at_ingest(job, features)` can be called to check programmatically. But CC should also apply these gates directly when extracting features — don't wait for the Python call.
+
+**Important**: only reject when the evidence is clear from the JD. If a field is ambiguous (e.g. experience requirement is vague), do NOT reject — let it through for `/compare-jobs` to score.
+
+### 5. Output shape
 
 A completed job card looks like:
 
@@ -122,6 +141,7 @@ A completed job card looks like:
     "major_required": ["计算机", "数学"],
     "salary_range": "",
     "coding": "必须且日常写",
+    "work_experience_required": "不限/应届可",
     "matched_experiences": ["毕设：Network Foundation of Power Law"]
   }
 }
@@ -142,6 +162,8 @@ Report to the user:
 - Do not invent enum values not listed in the schema.
 - Job data must go into `advisor_data/jobs/self/jobs.jsonl`.
 - If user asks for ranking/comparison, direct to `/compare-jobs`.
+- **Apply the 4 ingest hard gates** before saving. If a job is clearly unsuitable (PhD required, 3+ years experience, excluded direction, hard major wall), do NOT save it — tell the user why it was skipped.
+- When in doubt, let the job through rather than rejecting it.
 
 ## References
 

@@ -68,6 +68,11 @@ FEATURE_SCHEMA = {
         "options": ["不需要", "加分项", "必须且日常写"],
         "description": "对'会写代码'的要求",
     },
+    "work_experience_required": {
+        "type": "enum",
+        "options": ["不限/应届可", "1-2年", "3年及以上", "5年及以上"],
+        "description": "全职工作经验要求（实习经历不算）",
+    },
     "matched_experiences": {
         "type": "list",
         "description": "用户最匹配该岗位的 1-3 段经历（标题即可，从用户画像中选取）",
@@ -274,3 +279,71 @@ def _score_hard_constraints(f: Dict[str, Any]) -> float:
         "博士优先": 0.4,  # user doesn't have PhD
     }
     return edu_map.get(edu, 0.8)
+
+
+# ── Ingest hard gate ────────────────────────────────────────────────
+
+# Directions that are flat-out irrelevant to the user.
+EXCLUDED_DIRECTION_HINTS = [
+    "公务员", "考公", "博士后", "教师", "讲师", "副研究员", "科研助理",
+    "生物实验", "湿实验", "细胞", "分子", "蛋白", "病理",
+    "行政", "前台", "文员", "档案", "综合支持",
+]
+
+# Majors where the user has zero background and that are hard walls.
+HARD_MAJOR_WALLS = ["医学", "药学", "法学", "建筑", "土木", "护理", "临床", "口腔", "中医"]
+
+
+def should_reject_at_ingest(
+    job: Dict[str, Any],
+    features: Dict[str, Any],
+) -> tuple[bool, str]:
+    """Decide whether a job should be rejected before entering the store.
+
+    Returns (rejected: bool, reason: str).
+    """
+    # --- Gate 1: excluded directions (keyword scan on JD text) ---
+    text = " ".join([
+        str(job.get("title", "")),
+        str(job.get("job_family", "")),
+        " ".join(job.get("keywords", []) or []),
+        " ".join(job.get("requirements", []) or []),
+        " ".join(job.get("responsibilities", []) or []),
+    ])
+    for hint in EXCLUDED_DIRECTION_HINTS:
+        if hint in text:
+            return True, f"命中排除方向: {hint}"
+
+    # --- Gate 2: education floor (from features) ---
+    if features:
+        edu = features.get("education_floor", "")
+        if edu in ("博士优先",):
+            return True, f"学历门槛不达标: {edu}（用户为硕士）"
+
+    # --- Gate 3: work experience (from features) ---
+    if features:
+        # Detect social-hire-only roles requiring 3+ years of full-time experience
+        # The CC fills this during feature extraction by reading the JD
+        work_exp = features.get("work_experience_required", "")
+        if work_exp == "3年及以上":
+            return True, f"工作经验不匹配: 要求{work_exp}全职经验（用户为应届生）"
+
+    # --- Gate 4: hard major wall (from features) ---
+    if features:
+        majors = features.get("major_required", [])
+        # Only reject if majors are specified AND none overlap with user's background
+        if majors and majors != ["不限"]:
+            user_majors = {"经济", "金融", "统计", "数学", "数量经济"}
+            job_majors = set("".join(majors))
+            has_overlap = any(
+                any(um in mj for um in user_majors) or mj in ("不限", "理工科", "相关")
+                for mj in majors
+            )
+            has_wall = any(
+                any(wall in mj for wall in HARD_MAJOR_WALLS)
+                for mj in majors
+            )
+            if has_wall and not has_overlap:
+                return True, f"专业硬性壁垒: {majors}"
+
+    return False, ""

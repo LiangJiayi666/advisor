@@ -34,17 +34,28 @@
 
 提取结果写入 job card 的 `"features"` 字段。
 
-### 第四步：持久化
+### 第四步：硬筛（入库前过滤）
+
+提取完 features 后，检查 4 个硬筛门槛。命中任何一个就**不存入** jobs.jsonl，告知用户跳过原因：
+
+1. **排除方向** — 公务员/考公/博士后/教师/纯生物/纯行政
+2. **学历不达标** — education_floor 为"博士优先"
+3. **经验不匹配** — work_experience_required 为"3年及以上"或"5年及以上"
+4. **专业硬壁垒** — major_required 含医学/法学/建筑等且无"不限"
+
+拿不准的不筛，放进去让 `/compare-jobs` 处理。
+
+### 第五步：持久化
 
 写入 `advisor_data/jobs/self/`：
 - `raw/` 保存原始 JD（.md）
 - `jobs.jsonl` 追加带 features 的 job card（去重）
 
-### 第五步：汇报
+### 第六步：汇报
 
 至少汇报：
 - 岗位核心信息
-- 保存状态（新增/已存在）
+- 保存状态（新增/已存在/被硬筛跳过+原因）
 - 特征提取摘要（daily_work / tech_depth / coding）
 - 如果用户问了匹配度，引导到 `/compare-jobs`
 
