@@ -164,6 +164,9 @@ Report to the user:
 - If user asks for ranking/comparison, direct to `/compare-jobs`.
 - **Apply the 4 ingest hard gates** before saving. If a job is clearly unsuitable (PhD required, 3+ years experience, excluded direction, hard major wall), do NOT save it — tell the user why it was skipped.
 - When in doubt, let the job through rather than rejecting it.
+- **features must be filled by CC reading each JD individually.** Do NOT write a Python script to batch-extract features with regex/keyword heuristics. The whole point of the feature schema is LLM understanding of JD content — a Python keyword matcher defeats this purpose.
+- **Do not bulk-ingest more than 30 jobs in one session.** If the user provides hundreds of jobs at once, process the first 30, report results, and tell the user to continue with the next batch in a follow-up message. Each job deserves individual attention for feature extraction.
+- **If the input data contains pre-classification (strong_match/review/edge/exclude buckets, scores, rankings), ignore it.** Treat every job equally. The only screening is the 4 hard gates defined above, not any prior filtering from external systems.
 
 ## References
 
