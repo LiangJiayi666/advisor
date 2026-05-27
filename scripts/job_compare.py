@@ -1,172 +1,230 @@
-"""Deterministic job comparison helpers for Advisor.
+"""Deterministic job comparison and ranking for Advisor.
 
-LLMs may explain the result, but the score itself should be reproducible and
-inspectable.  This module intentionally uses simple transparent heuristics.
+Delegates all scoring logic to job_batch_rank so that there is a single
+source of truth for track classification, keyword weights, and dimension
+scoring.  This module provides the public API that the compare-jobs command
+calls: compare by job_id subset, or rank the full corpus.
 """
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
-DEFAULT_WEIGHTS = {
-    "hard_constraints": 0.25,
-    "skill_fit": 0.25,
-    "growth_fit": 0.20,
-    "industry_fit": 0.15,
-    "cost_risk": 0.10,
-    "evidence_confidence": 0.05,
-}
-
-
-def _norm_list(value: Any) -> List[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(v).strip() for v in value if str(v).strip()]
-    return [str(value).strip()] if str(value).strip() else []
-
-
-def _contains_any(haystack: Iterable[str], needles: Iterable[str]) -> int:
-    hay = " ".join(_norm_list(list(haystack))).lower()
-    count = 0
-    for needle in needles:
-        needle_s = str(needle).strip().lower()
-        if needle_s and needle_s in hay:
-            count += 1
-    return count
+from scripts.job_batch_rank import (
+    UserPreferences,
+    _apply_company_soft_cap,
+    _dedupe_group,
+    _derive_keywords,
+    _derive_track,
+    _completeness,
+    link_raw,
+    _normalize_city,
+    _normalize_company,
+    _normalize_title,
+    _norm_text,
+    _norm_list,
+    _primary_rows,
+    _score_job,
+    default_preferences,
+    load_evidence_terms,
+    load_jobs,
+    load_raw_index,
+)
 
 
-def _ratio(count: int, total: int) -> float:
-    if total <= 0:
-        return 0.5
-    return max(0.0, min(1.0, count / total))
+def _resolve_jobs(
+    jobs_jsonl: Path,
+    raw_dir: Path,
+    evidence_jsonl: Path,
+    job_ids: List[str] | None = None,
+    today: date | None = None,
+) -> Dict[str, Any]:
+    """Load, normalize, score, and optionally filter jobs.
 
+    Returns a dict with:
+      - "ranking": scored rows (possibly filtered by job_ids)
+      - "total_in_corpus": count before filtering
+      - "filtered_count": how many were kept
+    """
+    today = today or date.today()
+    prefs = default_preferences()
+    jobs = load_jobs(jobs_jsonl)
+    raw_index = load_raw_index(raw_dir, today=today)
+    evidence_terms = load_evidence_terms(evidence_jsonl)
 
-def _evidence_is_present(job: Dict[str, Any]) -> bool:
-    evidence_path = job.get("evidence_path")
-    if not evidence_path:
-        return False
-    path = Path(str(evidence_path))
-    if not path.exists():
-        return False
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return False
-    return bool(payload)
+    # --- normalize & score all jobs (same pipeline as batch_rank) ---
+    normalized: List[Dict[str, Any]] = []
+    for idx, job in enumerate(jobs, start=1):
+        raw_match = link_raw(job, raw_index)
+        city = _normalize_city(
+            raw_match.get("city") if raw_match and raw_match.get("city") else job.get("city")
+        )
+        keywords = _derive_keywords(job, raw_match)
+        requirements = raw_match.get("requirements", []) if raw_match else _norm_list(job.get("requirements"))
+        responsibilities = raw_match.get("responsibilities", []) if raw_match else _norm_list(job.get("responsibilities"))
+        deadline_text = raw_match.get("deadline_text", "") if raw_match else ""
+        deadline_date = raw_match.get("deadline_date", "") if raw_match else ""
+        deadline_confidence = raw_match.get("deadline_confidence", "none") if raw_match else "none"
+        record = {
+            "row_id": idx,
+            "job_id": _norm_text(job.get("job_id")),
+            "title": _norm_text(job.get("title")),
+            "normalized_title": _normalize_title(job.get("title")),
+            "company": _normalize_company(job.get("company")),
+            "city": city,
+            "recruit_type": job.get("recruit_type", ""),
+            "job_family": _norm_text(job.get("job_family")),
+            "source": _norm_text(job.get("source")),
+            "source_url": _norm_text(job.get("source_url")),
+            "bucket": _norm_text(job.get("bucket")),
+            "reason": _norm_text(job.get("reason")),
+            "raw_path": raw_match.get("raw_path", "") if raw_match else "",
+            "requirements": requirements,
+            "responsibilities": responsibilities,
+            "keywords": keywords,
+            "deadline_text": deadline_text,
+            "deadline_date": deadline_date,
+            "deadline_confidence": deadline_confidence,
+        }
+        record["completeness_score"] = _completeness(job, raw_match)
+        record["target_track"] = _derive_track(
+            " ".join([record["title"], record["job_family"], " ".join(record["keywords"])])
+        )
+        record["dedupe_group"] = _dedupe_group(record)
+        normalized.append({**record, **_score_job(record, prefs, evidence_terms, today)})
 
+    # --- dedupe: keep primary per group ---
+    primary_by_group: Dict[str, Dict[str, Any]] = {}
+    for row in normalized:
+        group = row["dedupe_group"]
+        score = (
+            float(row.get("completeness_score") or 0.0),
+            1.0 if row.get("raw_path") else 0.0,
+            1.0 if row.get("source_url") else 0.0,
+            1.0 if row.get("job_id") else 0.0,
+        )
+        if group not in primary_by_group or score > primary_by_group[group]["_primary_score"]:
+            primary_by_group[group] = {**row, "_primary_score": score}
+    for row in normalized:
+        row["is_primary_in_group"] = primary_by_group[row["dedupe_group"]]["row_id"] == row["row_id"]
 
-def score_job(job: Dict[str, Any], user_preferences: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    prefs = user_preferences or {}
-    preferred_cities = _norm_list(prefs.get("preferred_cities"))
-    target_keywords = _norm_list(prefs.get("target_keywords"))
-    target_job_families = _norm_list(prefs.get("target_job_families"))
+    # --- filter by job_ids if specified ---
+    total_in_corpus = len(normalized)
+    if job_ids:
+        id_set = set(job_ids)
+        # Also match by title/company for fuzzy resolution
+        title_company_set = set()
+        for jid in job_ids:
+            # Try to find matches by partial title or company
+            for row in normalized:
+                rt = _normalize_title(row.get("title", ""))
+                rc = _normalize_company(row.get("company", ""))
+                if jid.lower() in rt.lower() or jid.lower() in rc.lower():
+                    title_company_set.add(row["row_id"])
 
-    penalties: Dict[str, str] = {}
-    city = str(job.get("city") or "unknown")
-    if preferred_cities and city not in preferred_cities:
-        penalties["city"] = f"城市 {city} 不在偏好城市 {preferred_cities} 中"
-    hard_constraints = 1.0 - 0.5 * len(penalties)
-    hard_constraints = max(0.0, hard_constraints)
+        filtered = [
+            row for row in normalized
+            if row.get("job_id") in id_set
+            or row.get("normalized_job_id", row.get("job_id")) in id_set
+            or row["row_id"] in title_company_set
+        ]
+        # If still empty, try keyword substring match against title
+        if not filtered:
+            for row in normalized:
+                row_text = f"{row.get('title', '')} {row.get('company', '')}".lower()
+                if any(jid.lower() in row_text for jid in job_ids):
+                    filtered.append(row)
+    else:
+        filtered = normalized
 
-    searchable = []
-    for key in ["title", "job_family", "keywords", "requirements", "responsibilities"]:
-        searchable.extend(_norm_list(job.get(key)))
-
-    skill_fit = _ratio(_contains_any(searchable, target_keywords), len(target_keywords))
-    growth_fit = _ratio(_contains_any(_norm_list(job.get("job_family")) + _norm_list(job.get("title")), target_job_families), len(target_job_families))
-    industry_fit = _ratio(_contains_any(searchable, ["金融", "金融科技", "银行", "证券", "量化", "投研"]), 2)
-
-    cost_risk = 0.7
-    work_mode = str(job.get("work_mode") or "").lower()
-    if any(token in work_mode for token in ["高强度", "出差", "996", "加班"]):
-        cost_risk = 0.35
-
-    evidence_present = _evidence_is_present(job)
-    evidence_confidence = 1.0 if evidence_present else 0.3
-
-    dimensions = {
-        "hard_constraints": hard_constraints,
-        "skill_fit": skill_fit,
-        "growth_fit": growth_fit,
-        "industry_fit": industry_fit,
-        "cost_risk": cost_risk,
-        "evidence_confidence": evidence_confidence,
-    }
-    total = sum(DEFAULT_WEIGHTS[key] * dimensions[key] for key in DEFAULT_WEIGHTS)
-
-    uncertainties = []
-    for key in ["city", "job_family", "requirements", "compensation", "work_mode"]:
-        value = job.get(key)
-        if value in [None, "", "unknown", []]:
-            uncertainties.append(key)
-    if not evidence_present:
-        uncertainties.append("evidence")
+    filtered.sort(key=lambda item: item["priority_score"], reverse=True)
+    ranked = _apply_company_soft_cap(filtered)
 
     return {
-        "job_id": job.get("job_id"),
-        "title": job.get("title"),
-        "company": job.get("company"),
-        "city": city,
-        "total_score": round(total, 4),
-        "dimensions": {key: round(value, 4) for key, value in dimensions.items()},
-        "hard_constraints": {"penalties": penalties},
-        "uncertainties": uncertainties,
+        "ranking": ranked,
+        "total_in_corpus": total_in_corpus,
+        "filtered_count": len(ranked),
+        "evidence_term_count": len(evidence_terms),
+        "track_distribution": _track_distribution(ranked),
     }
 
 
-def _apply_company_cap(
-    ranking: List[Dict[str, Any]], max_per_company: int
-) -> List[Dict[str, Any]]:
-    """Soft-penalty: jobs beyond `max_per_company` per company get a score penalty.
-
-    After initial scoring and sorting, the N-th job (N > max_per_company) from the
-    same company has its total_score multiplied by a decay factor that increases
-    with rank.  The list is then re-sorted so penalised jobs sink naturally.
-    """
-    if max_per_company <= 0:
-        return ranking
-    company_counts: Dict[str, int] = {}
-    result: List[Dict[str, Any]] = []
-    for item in ranking:
-        company = str(item.get("company") or "unknown")
-        count = company_counts.get(company, 0)
-        if count >= max_per_company:
-            decay = 0.7 ** (count - max_per_company + 1)
-            penalised = {**item, "total_score": round(item["total_score"] * decay, 4)}
-            penalised.setdefault("penalties", {})["company_overflow"] = (
-                f"{company} 第 {count + 1} 个岗位，分数乘 {decay:.2f}"
-            )
-            result.append(penalised)
-        else:
-            result.append(item)
-        company_counts[company] = count + 1
-    result.sort(key=lambda item: item["total_score"], reverse=True)
-    return result
+def _track_distribution(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    from collections import Counter
+    return dict(Counter(row.get("target_track", "unknown") for row in rows))
 
 
 def compare_jobs(
-    jobs: Iterable[Dict[str, Any]],
-    job_ids: Iterable[str],
-    user_preferences: Dict[str, Any] | None = None,
+    jobs_jsonl: Path,
+    raw_dir: Path,
+    evidence_jsonl: Path,
+    job_ids: List[str] | None = None,
     max_per_company: int = 3,
+    today: date | None = None,
 ) -> Dict[str, Any]:
-    ids = list(job_ids)
-    selected = [job for job in jobs if job.get("job_id") in ids]
-    ranking = [score_job(job, user_preferences) for job in selected]
-    ranking.sort(key=lambda item: item["total_score"], reverse=True)
-    adjusted = _apply_company_cap(ranking, max_per_company)
-    overflow = [item for item in adjusted if item.get("penalties", {}).get("company_overflow")]
+    """Score and rank jobs.
+
+    If job_ids is None or empty: rank the full corpus.
+    If job_ids is provided: only rank the matching subset.
+    """
+    today = today or date.today()
+    result = _resolve_jobs(jobs_jsonl, raw_dir, evidence_jsonl, job_ids=job_ids, today=today)
+    ranking = result["ranking"]
+
+    # Build a compact output for CC consumption
+    output_lines: List[Dict[str, Any]] = []
+    for idx, row in enumerate(ranking, start=1):
+        dims = row.get("dimensions", {})
+        output_lines.append({
+            "rank": idx,
+            "job_id": row.get("job_id") or row.get("normalized_job_id"),
+            "title": row.get("title"),
+            "company": row.get("company"),
+            "city": row.get("city"),
+            "target_track": row.get("target_track"),
+            "fit_score": row.get("fit_score"),
+            "priority_score": row.get("priority_score"),
+            "track_fit": dims.get("track_fit"),
+            "skill_fit": dims.get("skill_fit"),
+            "experience_fit": dims.get("experience_fit"),
+            "industry_fit": dims.get("industry_fit"),
+            "growth_fit": dims.get("growth_fit"),
+            "deadline_date": row.get("deadline_date"),
+            "strengths": row.get("top_strengths"),
+            "risks": row.get("top_risks"),
+            "penalties": row.get("hard_constraint_penalties"),
+        })
+
     return {
-        "weights": DEFAULT_WEIGHTS,
-        "max_per_company": max_per_company,
-        "ranking": adjusted,
-        "overflow": [
-            {"job_id": item["job_id"], "company": item.get("company"),
-             "original_score": item.get("penalties", {}).get("_original_score"),
-             "adjusted_score": item["total_score"]}
-            for item in overflow
-        ],
-        "missing_job_ids": [job_id for job_id in ids if not any(job.get("job_id") == job_id for job in selected)],
+        "mode": "full_corpus" if not job_ids else "filtered",
+        "requested_ids": job_ids,
+        "total_in_corpus": result["total_in_corpus"],
+        "returned_count": len(output_lines),
+        "track_distribution": result["track_distribution"],
+        "ranking": output_lines,
     }
+
+
+def main() -> int:
+    """CLI entry point for quick testing."""
+    import argparse
+    parser = argparse.ArgumentParser(description="Score and rank jobs using the batch_rank scoring pipeline.")
+    parser.add_argument("--jobs-jsonl", default="advisor_data/jobs/self/jobs.jsonl")
+    parser.add_argument("--raw-dir", default="advisor_data/jobs/self/raw")
+    parser.add_argument("--evidence-jsonl", default="advisor_data/resume/evidence.jsonl")
+    parser.add_argument("job_ids", nargs="*", help="Optional job IDs or title/company fragments to filter. Omit for full corpus.")
+    args = parser.parse_args()
+    result = compare_jobs(
+        Path(args.jobs_jsonl),
+        Path(args.raw_dir),
+        Path(args.evidence_jsonl),
+        job_ids=args.job_ids or None,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

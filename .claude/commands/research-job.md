@@ -1,8 +1,8 @@
-# /research-job — 岗位研究入口
+# /research-job — 岗位采集入口
 
-用途：接收岗位链接、JD 文本或岗位描述，生成结构化岗位卡片，并在需要时给出研究与适配判断。
+用途：接收岗位链接、JD 文本或岗位描述，解析为结构化岗位卡片，持久化到 job store。
 
-这个 command 负责入口编排，不负责重复定义 job research 的全部方法细节。方法、约束和证据边界由 `job-research` skill 承担。
+本 command 只管采集和存储，不触发打分排序。打分排序使用 `/compare-jobs`。
 
 ## 输入
 
@@ -10,7 +10,7 @@
 - 岗位 URL
 - 粘贴的 JD 文本
 - 公司名 + 岗位名
-- 一个待判断是否匹配的岗位描述
+- 多岗位批量输入
 
 ## 编排流程
 
@@ -22,47 +22,41 @@
 - 一个模糊岗位描述
 - 多岗位批量输入
 
-如果是批量输入，先说明会做预筛选与结构化，不直接进入逐条长篇分析。
+如果是批量输入，逐条处理，每条生成一个结构化 job card。
 
-### 第二步：激活 job-research 方法
+### 第二步：抓取与结构化
 
-使用 `job-research` skill 的方法完成：
-- JD 结构化
-- job card 规范化
-- owner 判定
-- 持久化到 `advisor_data/jobs/{owner}/`
-- 在需要时补公司 / 行业 / 岗位背景研究
+- 如果是 URL：抓取页面，提取 JD 内容
+- 如果是文本：直接解析
+- 提取结构化字段：title / company / city / requirements / responsibilities / keywords / deadline
 
-### 第三步：确认是否已经形成结构化 job card
+### 第三步：持久化到 job store
 
-输出前必须确认结果不只是 archive note 或 raw text，而是真正写入了结构化岗位数据。
+写入 `advisor_data/jobs/self/`：
+- `raw/` 保存原始 JD 文本（.md 格式）
+- `jobs.jsonl` 追加结构化 job card（去重）
 
-### 第四步：决定输出深度
+如果该岗位已存在（title + company + city 三元组重复），跳过并告知用户。
 
-根据用户问题决定回答深度：
-- 如果用户只是说“先存一下这个岗位”，重点汇报岗位卡片和保存结果。
-- 如果用户问“这个适合我吗”，增加 fit judgment。
-- 如果用户问“帮我调研这个公司/岗位”，增加研究报告与来源。
-- 如果用户给了很多岗位，先缩成 shortlist，再决定是否做深读。
-
-### 第五步：汇报结果
+### 第四步：汇报结果
 
 至少汇报：
-- 解析出的岗位核心信息
-- 保存位置 / owner
-- 是否已经形成结构化 job card
-- 如果做了研究：哪些是 verified facts，哪些是 inference
-- 如果做了 fit judgment：结论和主要依据
+- 解析出的岗位核心信息（title / company / city / 关键要求）
+- 保存位置
+- 是否为新岗位 / 已存在
+- 如果信息不完整：哪些字段缺失
 
 ## 硬约束
 
-- 不要把岗位事实直接塞进长期 memory 代替 job store。
-- 不要只生成 raw markdown 却漏掉结构化岗位卡片。
-- 不要把 public sentiment crawling 设成默认步骤。
-- 不要让 command 重新写一整套方法学；方法归 skill，业务真相归 Python 层。
+- 本 command 不触发 `_score_job`、shortlist 生成、报告输出
+- 不要把岗位事实塞进长期 memory 代替 job store
+- 不要只生成 raw markdown 却漏掉结构化岗位卡片
+- 岗位数据必须写入 `advisor_data/jobs/self/jobs.jsonl`，不是对话上下文
+- 如果用户问了"这个适合我吗"或"帮我排序"，引导用户使用 `/compare-jobs`
 
 ## 参考
 
 - 方法与约束：`job-research` skill
+- 打分排序：`/compare-jobs`
+- 简历生成：`/write-resume`
 - 全局规则：`CLAUDE.md`
-- 架构说明：`AdvisorPrivate_ArchitectureRefactor_20260526.md`
