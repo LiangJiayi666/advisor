@@ -961,12 +961,14 @@ def _role_reason_lines(row: Dict[str, Any]) -> List[str]:
     dims = row.get("dimensions", {})
     reasons: List[str] = []
     track = row.get("target_track")
-    if track == "ai_pm":
-        reasons.append(f"主轨 AI 产品方向直接匹配，track_fit={dims.get('track_fit', 0):.2f}。")
+    if track == "ai_engineer":
+        reasons.append(f"主轨 AI/算法工程方向直接匹配，track_fit={dims.get('track_fit', 0):.2f}。")
     elif track == "quant_research":
         reasons.append(f"属于你的备选量化/研究方向，track_fit={dims.get('track_fit', 0):.2f}。")
+    elif track == "ai_pm":
+        reasons.append(f"属于 AI 产品方向，track_fit={dims.get('track_fit', 0):.2f}。")
     elif track == "adjacent":
-        reasons.append(f"属于产品/数据相邻方向，可作为主轨外延岗位，track_fit={dims.get('track_fit', 0):.2f}。")
+        reasons.append(f"属于数据/平台相邻方向，可作为主轨外延岗位，track_fit={dims.get('track_fit', 0):.2f}。")
     if dims.get("evidence_readiness", 0.0) >= 0.6:
         reasons.append(f"现有经历能较好支撑定制简历，evidence_readiness={dims.get('evidence_readiness', 0):.2f}。")
     elif dims.get("evidence_readiness", 0.0) >= 0.45:
@@ -992,7 +994,7 @@ def _other_role_summary_lines(company: str, company_rows: List[Dict[str, Any]], 
     soft_capped = sum(1 for row in others if "company_overflow" in (row.get("hard_constraint_penalties") or {}))
     weak_jd = sum(1 for row in others if row.get("dimensions", {}).get("data_confidence", 0.0) < 0.45)
     weak_evidence = sum(1 for row in others if row.get("dimensions", {}).get("evidence_readiness", 0.0) < 0.45)
-    non_core = sum(1 for row in others if row.get("target_track") not in {"ai_pm", "adjacent", "quant_research"})
+    non_core = sum(1 for row in others if row.get("target_track") not in {"ai_engineer", "ai_pm", "adjacent", "quant_research"})
     city_penalty = sum(1 for row in others if "city" in (row.get("hard_constraint_penalties") or {}))
     lines: List[str] = []
     if soft_capped:
@@ -1109,7 +1111,7 @@ def write_shortlist(rows: List[Dict[str, Any]], path: Path, limit: int = 15) -> 
         row for row in rows
         if row.get("is_primary_in_group")
         and row.get("dimensions", {}).get("evidence_readiness", 0.0) >= 0.35
-        and row.get("target_track") in {"ai_pm", "quant_research", "adjacent"}
+        and row.get("target_track") in {"ai_engineer", "ai_pm", "quant_research", "adjacent"}
     ]
     shortlist.sort(key=lambda item: item["priority_score"], reverse=True)
     shortlist = shortlist[:limit]
@@ -1202,7 +1204,7 @@ def write_report(
     city_counter = Counter(row.get("city") for row in primary_rows)
     source_counter = Counter(row.get("source") for row in primary_rows)
     top50 = _top_primary(report_rows, lambda row: True, 50)
-    top_ai = _top_primary(report_rows, lambda row: row.get("target_track") == "ai_pm", 20)
+    top_ai = _top_primary(report_rows, lambda row: row.get("target_track") in {"ai_engineer", "ai_pm"}, 20)
     top_adjacent = _top_primary(report_rows, lambda row: row.get("target_track") == "adjacent", 20)
     top_quant = _top_primary(report_rows, lambda row: row.get("target_track") == "quant_research", 20)
     urgent = _top_primary(report_rows, lambda row: row.get("dimensions", {}).get("deadline_urgency", 0.0) >= 0.72, 20)
@@ -1256,7 +1258,7 @@ def write_report(
         "",
     ]
     lines.extend(_format_job_line(idx, row) for idx, row in enumerate(top50, start=1))
-    lines.extend(["", "## 五、Top 20 AI PM 岗位", ""])
+    lines.extend(["", "## 五、Top 20 AI/算法岗位", ""])
     lines.extend(_format_job_line(idx, row) for idx, row in enumerate(top_ai, start=1))
     lines.extend(["", "## 六、Top 20 产品/数据相邻岗位", ""])
     lines.extend(_format_job_line(idx, row) for idx, row in enumerate(top_adjacent, start=1))
@@ -1282,9 +1284,9 @@ def write_report(
         "## 十一、行动建议",
         "",
         "1. 先围绕 Top 10–15 的主记录做投递动作，不要被重复镜像岗位分散注意力。",
-        "2. 先处理 AI PM / 产品数据相邻岗位中 evidence_readiness 较高的岗位，这批最容易快速改出高质量简历。",
+        "2. 先处理 AI/算法岗和产品数据相邻岗位中 evidence_readiness 较高的岗位，这批最容易快速改出高质量简历。",
         "3. 对 deadline_confidence=none 但分数很高的岗位，建议在投递前人工打开原链接复核截止时间。",
-        "4. 量化/研究备选岗位可保留为第二批，不必抢在第一批AI PM岗位之前全部处理。",
+        "4. 量化/研究备选岗位可保留为第二批，不必抢在第一批 AI/算法岗位之前全部处理。",
         "",
     ])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
