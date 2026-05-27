@@ -709,6 +709,7 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
     requirements = _norm_list(job.get("requirements"))
     responsibilities = _norm_list(job.get("responsibilities"))
     text = " ".join([title, company, city, job_family, " ".join(keywords), " ".join(requirements), " ".join(responsibilities)])
+    features = job.get("features")
 
     penalties: Dict[str, str] = {}
     if any(hint in text for hint in EXPLICIT_EXCLUSION_HINTS):
@@ -726,19 +727,32 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
     elif penalties:
         hard_constraints = max(0.15, 1.0 - 0.18 * len(penalties))
 
-    primary_hits = _contains_any(text, prefs.primary_keywords + prefs.primary_families)
-    backup_hits = _contains_any(text, prefs.backup_keywords + prefs.backup_families)
-    adjacent_hits = _contains_any(text, prefs.adjacent_keywords)
-
-    skill_fit = min(1.0, primary_hits * 0.11 + backup_hits * 0.09 + adjacent_hits * 0.04)
-    experience_fit = min(1.0, _experience_fit(text, evidence_terms) * 1.6)
-    fintech_hits = _contains_any(text, FINTECH_HINTS)
-    industry_fit = min(1.0, fintech_hits * 0.18)
-    growth_fit = min(1.0, _contains_any(text, ["平台", "自动化", "agent", "workflow", "分析", "数据", "需求", "协作"]) * 0.12)
-
-    cost_risk = 0.72
-    if any(hint.lower() in text.lower() for hint in INTENSE_HINTS):
-        cost_risk = 0.4
+    # ── Feature-based scoring (preferred) vs keyword fallback ──
+    scoring_source = "features"
+    if features and isinstance(features, dict) and features.get("daily_work"):
+        from scripts.job_feature_extract import score_from_features
+        fs = score_from_features(features)
+        skill_fit = fs["feature_skill_fit"]
+        experience_fit = fs["feature_experience_fit"]
+        industry_fit = fs["feature_industry_fit"]
+        growth_fit = fs["feature_growth_fit"]
+        cost_risk = fs["feature_cost_risk"]
+        # feature hard_constraints supplements penalty-based one
+        if fs["feature_hard_constraints"] < hard_constraints:
+            hard_constraints = fs["feature_hard_constraints"]
+    else:
+        scoring_source = "keywords"
+        primary_hits = _contains_any(text, prefs.primary_keywords + prefs.primary_families)
+        backup_hits = _contains_any(text, prefs.backup_keywords + prefs.backup_families)
+        adjacent_hits = _contains_any(text, prefs.adjacent_keywords)
+        skill_fit = min(1.0, primary_hits * 0.11 + backup_hits * 0.09 + adjacent_hits * 0.04)
+        experience_fit = min(1.0, _experience_fit(text, evidence_terms) * 1.6)
+        fintech_hits = _contains_any(text, FINTECH_HINTS)
+        industry_fit = min(1.0, fintech_hits * 0.18)
+        growth_fit = min(1.0, _contains_any(text, ["平台", "自动化", "agent", "workflow", "分析", "数据", "需求", "协作"]) * 0.12)
+        cost_risk = 0.72
+        if any(hint.lower() in text.lower() for hint in INTENSE_HINTS):
+            cost_risk = 0.4
 
     urgency_score, urgency_reason = _deadline_urgency(_norm_text(job.get("deadline_date")), _norm_text(job.get("deadline_text")), today)
     data_confidence = float(job.get("completeness_score") or 0.0)
@@ -773,7 +787,7 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
         strengths.append("AI产品方向")
     elif track == "adjacent":
         strengths.append("数据/平台方向")
-    if fintech_hits:
+    if industry_fit >= 0.3:
         strengths.append("金融/投研语境")
     if experience_fit >= 0.6:
         strengths.append("证据库可支撑定制简历")

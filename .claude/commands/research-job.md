@@ -1,8 +1,8 @@
-# /research-job — 岗位采集入口
+# /research-job — 岗位采集 + 特征提取入口
 
-用途：接收岗位链接、JD 文本或岗位描述，解析为结构化岗位卡片，持久化到 job store。
+用途：接收岗位链接、JD 文本或岗位描述，解析为结构化岗位卡片，提取特征，持久化到 job store。
 
-本 command 只管采集和存储，不触发打分排序。打分排序使用 `/compare-jobs`。
+本 command 负责**采集和特征提取**，不触发打分排序。打分排序使用 `/compare-jobs`。
 
 ## 输入
 
@@ -16,47 +16,47 @@
 
 ### 第一步：解析输入形态
 
-先判断当前输入属于哪一类：
-- 单个明确 JD
-- 单个岗位链接
-- 一个模糊岗位描述
-- 多岗位批量输入
-
-如果是批量输入，逐条处理，每条生成一个结构化 job card。
+判断输入类型：单个 JD / 链接 / 批量。批量则逐条处理。
 
 ### 第二步：抓取与结构化
 
-- 如果是 URL：抓取页面，提取 JD 内容
-- 如果是文本：直接解析
-- 提取结构化字段：title / company / city / requirements / responsibilities / keywords / deadline
+- URL → 抓取页面提取 JD
+- 文本 → 直接解析
+- 提取：title / company / city / requirements / responsibilities / keywords / deadline
 
-### 第三步：持久化到 job store
+### 第三步：特征提取（关键步骤）
+
+阅读 JD 内容，按照 `job-research` skill 中定义的 feature schema 填写所有字段。
+
+这一步是**结构化事实提取**，不是判断——回答"JD 说了什么"，不是"用户应不应该投"。
+
+唯一需要结合用户画像的字段是 `matched_experiences`：从用户背景中选出 1-3 段最相关的经历。
+
+提取结果写入 job card 的 `"features"` 字段。
+
+### 第四步：持久化
 
 写入 `advisor_data/jobs/self/`：
-- `raw/` 保存原始 JD 文本（.md 格式）
-- `jobs.jsonl` 追加结构化 job card（去重）
+- `raw/` 保存原始 JD（.md）
+- `jobs.jsonl` 追加带 features 的 job card（去重）
 
-如果该岗位已存在（title + company + city 三元组重复），跳过并告知用户。
-
-### 第四步：汇报结果
+### 第五步：汇报
 
 至少汇报：
-- 解析出的岗位核心信息（title / company / city / 关键要求）
-- 保存位置
-- 是否为新岗位 / 已存在
-- 如果信息不完整：哪些字段缺失
+- 岗位核心信息
+- 保存状态（新增/已存在）
+- 特征提取摘要（daily_work / tech_depth / coding）
+- 如果用户问了匹配度，引导到 `/compare-jobs`
 
 ## 硬约束
 
-- 本 command 不触发 `_score_job`、shortlist 生成、报告输出
-- 不要把岗位事实塞进长期 memory 代替 job store
-- 不要只生成 raw markdown 却漏掉结构化岗位卡片
-- 岗位数据必须写入 `advisor_data/jobs/self/jobs.jsonl`，不是对话上下文
-- 如果用户问了"这个适合我吗"或"帮我排序"，引导用户使用 `/compare-jobs`
+- 每个入库的 job card **必须**有 `features` 字段
+- features 的枚举值必须用 schema 中列出的，不要自创
+- 不要调用任何打分/排序函数
+- 不要把岗位事实塞进长期 memory
 
 ## 参考
 
-- 方法与约束：`job-research` skill
+- 特征提取 schema 和方法：`job-research` skill
 - 打分排序：`/compare-jobs`
-- 简历生成：`/write-resume`
 - 全局规则：`CLAUDE.md`
