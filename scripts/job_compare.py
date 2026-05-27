@@ -186,7 +186,6 @@ def compare_jobs(
             "target_track": row.get("target_track"),
             "fit_score": row.get("fit_score"),
             "priority_score": row.get("priority_score"),
-            "track_fit": dims.get("track_fit"),
             "skill_fit": dims.get("skill_fit"),
             "experience_fit": dims.get("experience_fit"),
             "industry_fit": dims.get("industry_fit"),

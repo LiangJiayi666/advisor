@@ -730,28 +730,15 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
     backup_hits = _contains_any(text, prefs.backup_keywords + prefs.backup_families)
     adjacent_hits = _contains_any(text, prefs.adjacent_keywords)
 
-    if track == "ai_engineer":
-        track_fit = 1.0
-    elif track == "quant_research":
-        track_fit = 0.82
-    elif track == "ai_pm":
-        track_fit = 0.65
-    elif track == "adjacent":
-        track_fit = 0.6
-    else:
-        track_fit = 0.25 if primary_hits or backup_hits else 0.08
-
     skill_fit = min(1.0, primary_hits * 0.11 + backup_hits * 0.09 + adjacent_hits * 0.04)
     experience_fit = min(1.0, _experience_fit(text, evidence_terms) * 1.6)
     fintech_hits = _contains_any(text, FINTECH_HINTS)
-    industry_fit = min(1.0, fintech_hits * 0.18 + (0.25 if track == "ai_engineer" else 0.0) + (0.35 if track == "quant_research" else 0.0))
+    industry_fit = min(1.0, fintech_hits * 0.18)
     growth_fit = min(1.0, _contains_any(text, ["平台", "自动化", "agent", "workflow", "分析", "数据", "需求", "协作"]) * 0.12)
 
     cost_risk = 0.72
     if any(hint.lower() in text.lower() for hint in INTENSE_HINTS):
         cost_risk = 0.4
-    if track == "other":
-        cost_risk = min(cost_risk, 0.6)
 
     urgency_score, urgency_reason = _deadline_urgency(_norm_text(job.get("deadline_date")), _norm_text(job.get("deadline_text")), today)
     data_confidence = float(job.get("completeness_score") or 0.0)
@@ -760,12 +747,11 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
 
     fit_score = round(
         hard_constraints * 0.18
-        + track_fit * 0.2
-        + skill_fit * 0.17
-        + experience_fit * 0.15
-        + industry_fit * 0.1
-        + growth_fit * 0.1
-        + cost_risk * 0.05
+        + skill_fit * 0.25
+        + experience_fit * 0.22
+        + industry_fit * 0.12
+        + growth_fit * 0.12
+        + cost_risk * 0.06
         + data_confidence * 0.05,
         4,
     )
@@ -780,13 +766,13 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
     strengths: List[str] = []
     risks: List[str] = []
     if track == "ai_engineer":
-        strengths.append("主轨AI/算法工程方向")
+        strengths.append("AI/算法工程方向")
     elif track == "quant_research":
-        strengths.append("备选量化研究方向")
+        strengths.append("量化研究方向")
     elif track == "ai_pm":
         strengths.append("AI产品方向")
     elif track == "adjacent":
-        strengths.append("相邻数据/平台方向")
+        strengths.append("数据/平台方向")
     if fintech_hits:
         strengths.append("金融/投研语境")
     if experience_fit >= 0.6:
@@ -813,7 +799,6 @@ def _score_job(job: Dict[str, Any], prefs: UserPreferences, evidence_terms: List
         "priority_score": priority_score,
         "dimensions": {
             "hard_constraints": round(hard_constraints, 4),
-            "track_fit": round(track_fit, 4),
             "skill_fit": round(skill_fit, 4),
             "experience_fit": round(experience_fit, 4),
             "industry_fit": round(industry_fit, 4),
@@ -962,13 +947,13 @@ def _role_reason_lines(row: Dict[str, Any]) -> List[str]:
     reasons: List[str] = []
     track = row.get("target_track")
     if track == "ai_engineer":
-        reasons.append(f"主轨 AI/算法工程方向直接匹配，track_fit={dims.get('track_fit', 0):.2f}。")
+        reasons.append(f"AI/算法工程方向，skill_fit={dims.get('skill_fit', 0):.2f}。")
     elif track == "quant_research":
-        reasons.append(f"属于你的备选量化/研究方向，track_fit={dims.get('track_fit', 0):.2f}。")
+        reasons.append(f"量化研究方向，skill_fit={dims.get('skill_fit', 0):.2f}。")
     elif track == "ai_pm":
-        reasons.append(f"属于 AI 产品方向，track_fit={dims.get('track_fit', 0):.2f}。")
+        reasons.append(f"AI产品方向，skill_fit={dims.get('skill_fit', 0):.2f}。")
     elif track == "adjacent":
-        reasons.append(f"属于数据/平台相邻方向，可作为主轨外延岗位，track_fit={dims.get('track_fit', 0):.2f}。")
+        reasons.append(f"数据/平台方向，skill_fit={dims.get('skill_fit', 0):.2f}。")
     if dims.get("evidence_readiness", 0.0) >= 0.6:
         reasons.append(f"现有经历能较好支撑定制简历，evidence_readiness={dims.get('evidence_readiness', 0):.2f}。")
     elif dims.get("evidence_readiness", 0.0) >= 0.45:
@@ -1020,7 +1005,7 @@ def write_csv(rows: List[Dict[str, Any]], path: Path) -> None:
         "deadline_date", "deadline_confidence", "top_strengths", "top_risks", "urgency_reason",
         "is_primary_in_group", "dedupe_group", "source_url",
     ] + [
-        "hard_constraints", "track_fit", "skill_fit", "experience_fit", "industry_fit", "growth_fit",
+        "hard_constraints", "skill_fit", "experience_fit", "industry_fit", "growth_fit",
         "cost_risk", "deadline_urgency", "data_confidence", "evidence_readiness", "evidence_confidence",
         "penalties_json", "keywords_json", "requirements_json", "responsibilities_json",
     ]
@@ -1053,7 +1038,6 @@ def write_csv(rows: List[Dict[str, Any]], path: Path) -> None:
                 "dedupe_group": row.get("dedupe_group"),
                 "source_url": row.get("source_url"),
                 "hard_constraints": dims.get("hard_constraints"),
-                "track_fit": dims.get("track_fit"),
                 "skill_fit": dims.get("skill_fit"),
                 "experience_fit": dims.get("experience_fit"),
                 "industry_fit": dims.get("industry_fit"),
